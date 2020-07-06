@@ -34,23 +34,52 @@ protected:
   {}
 };
 
+TEST_F(MessagesTest, Extensions)
+{
+  auto sv0 = SupportedVersionsExtension{ { ProtocolVersion::mls10 } };
+  auto sc0 = SupportedCipherSuitesExtension{ {
+    CipherSuite::P256_AES128GCM_SHA256_P256,
+    CipherSuite::X25519_AES128GCM_SHA256_Ed25519,
+  } };
+  auto lt0 = LifetimeExtension{ 0xA0A0A0A0A0A0A0A0, 0xB0B0B0B0B0B0B0B0 };
+  auto kid0 = KeyIDExtension{ { 0, 1, 2, 3 } };
+  auto ph0 = ParentHashExtension{ { 4, 5, 6, 7 } };
+
+  ExtensionList exts;
+  exts.add(sv0);
+  exts.add(sc0);
+  exts.add(lt0);
+  exts.add(kid0);
+  exts.add(ph0);
+
+  auto sv1 = exts.find<SupportedVersionsExtension>();
+  auto sc1 = exts.find<SupportedCipherSuitesExtension>();
+  auto lt1 = exts.find<LifetimeExtension>();
+  auto kid1 = exts.find<KeyIDExtension>();
+  auto ph1 = exts.find<ParentHashExtension>();
+
+  ASSERT_EQ(sv0, sv1);
+  ASSERT_EQ(sc0, sc1);
+  ASSERT_EQ(lt0, lt1);
+  ASSERT_EQ(kid0, kid1);
+  ASSERT_EQ(ph0, ph1);
+}
+
 TEST_F(MessagesTest, Interop)
 {
   for (const auto& tc : tv.cases) {
-    auto reproducible = deterministic_signature_scheme(tc.signature_scheme);
+    auto reproducible = deterministic_signature_scheme(tc.cipher_suite);
 
     // Miscellaneous data items we need to construct messages
     auto dh_priv = HPKEPrivateKey::derive(tc.cipher_suite, tv.dh_seed);
     auto dh_key = dh_priv.public_key();
-    auto sig_priv =
-      SignaturePrivateKey::derive(tc.signature_scheme, tv.sig_seed);
+    auto sig_priv = SignaturePrivateKey::derive(tc.cipher_suite, tv.sig_seed);
     auto sig_key = sig_priv.public_key();
     auto cred = Credential::basic(tv.user_id, sig_priv.public_key());
 
     DeterministicHPKE lock;
     auto tree =
       TestTreeKEMPublicKey{ tc.cipher_suite,
-                            tc.signature_scheme,
                             { tv.random, tv.random, tv.random, tv.random } };
     tree.blank_path(LeafIndex{ 2 });
 
@@ -61,15 +90,17 @@ TEST_F(MessagesTest, Interop)
     direct_path.leaf_key_package.signature = tv.random;
 
     // KeyPackage
-    KeyPackage key_package{
-      tc.cipher_suite, dh_priv.public_key(), cred, sig_priv
-    };
+    auto ext_list =
+      ExtensionList{ { { ExtensionType::lifetime, bytes(8, 0) } } };
+    auto key_package =
+      KeyPackage{ tc.cipher_suite, dh_priv.public_key(), cred, sig_priv };
+    key_package.extensions = ext_list;
     key_package.signature = tv.random;
     tls_round_trip(tc.key_package, key_package, reproducible);
 
     // GroupInfo, GroupSecrets, EncryptedGroupSecrets, and Welcome
-    auto group_info =
-      GroupInfo{ tv.group_id, tv.epoch, tree, tv.random, tv.random, tv.random };
+    auto group_info = GroupInfo{ tv.group_id, tv.epoch, tree,     tv.random,
+                                 tv.random,   ext_list, tv.random };
     group_info.signer_index = tv.signer_index;
     group_info.signature = tv.random;
     tls_round_trip(tc.group_info, group_info, true, tc.cipher_suite);

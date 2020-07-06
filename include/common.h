@@ -38,6 +38,12 @@ operator<<(std::ostream& out, const bytes& data);
 using epoch_t = uint64_t;
 
 ///
+/// Get the current system clock time in the format MLS expects
+///
+
+uint64_t seconds_since_epoch();
+
+///
 /// Auto-generate equality and inequality operators for TLS-serializable things
 ///
 
@@ -59,24 +65,28 @@ operator!=(const T& lhs, const T& rhs) {
 
 enum struct CipherSuite : uint16_t
 {
-  P256_SHA256_AES128GCM = 0x0000,
-  P521_SHA512_AES256GCM = 0x0010,
-  X25519_SHA256_AES128GCM = 0x0001,
-  X448_SHA512_AES256GCM = 0x0011,
-  unknown = 0xffff,
+  unknown = 0x0000,
+  X25519_AES128GCM_SHA256_Ed25519 = 0x0001,
+  P256_AES128GCM_SHA256_P256 = 0x0002,
+  X25519_CHACHA20POLY1305_SHA256_Ed25519 = 0x0003, // Unsupported
+  X448_AES256GCM_SHA512_Ed448 = 0x0004,
+  P521_AES256GCM_SHA512_P521 = 0x0005,
+  X448_CHACHA20POLY1305_SHA512_Ed448 = 0x0006, // Unsupported
 };
-
-size_t suite_nonce_size(CipherSuite suite);
-size_t suite_key_size(CipherSuite suite);
 
 enum struct SignatureScheme : uint16_t
 {
+  unknown = 0x0000,
   P256_SHA256 = 0x0403,
   P521_SHA512 = 0x0603,
   Ed25519 = 0x0807,
   Ed448 = 0x0808,
-  unknown = 0xffff,
 };
+
+extern const std::array<CipherSuite, 4> all_supported_suites;
+SignatureScheme suite_signature_scheme(CipherSuite suite);
+size_t suite_nonce_size(CipherSuite suite);
+size_t suite_key_size(CipherSuite suite);
 
 ///
 /// Error types
